@@ -469,56 +469,64 @@ EOF
 
 # Main processing with enhanced monitoring
 process_all_chunks() {
-    info "Starting enhanced parallel processing..."
+    info "Starting enhanced parallel processing..."
 
-    START_TIME=$(date +%s)
-    local chunk_files=("$OUTPUT_DIR/chunks/chunk_"*.txt)
-    TOTAL_CHUNKS=${#chunk_files[@]}
+    START_TIME=$(date +%s)
+    local chunk_files=("$OUTPUT_DIR/chunks/chunk_"*.txt)
+    TOTAL_CHUNKS=${#chunk_files[@]}
 
-    info "Processing $TOTAL_CHUNKS chunks with max $MAX_PARALLEL_JOBS parallel jobs"
+    info "Processing $TOTAL_CHUNKS chunks with max $MAX_PARALLEL_JOBS parallel jobs"
 
-    # Start dashboard if enabled
-    if [[ "$USE_TMUX_DASHBOARD" == true ]]; then
-        create_tmux_dashboard
-        start_dashboard_updater
+    # Use GNU parallel for efficient processing, with or without a dashboard
+    if command -v parallel &> /dev/null; then
+        export -f process_chunk
+        export OUTPUT_DIR FFUF_THREADS TARGET_PATH WORDLIST PRETTIFY_JSON
+       
+        if [[ "$USE_TMUX_DASHBOARD" == true ]]; then
+            create_tmux_dashboard
+            # Ensure the dashboard setup is complete before starting the updater and attaching
+            sleep 2 # A brief delay to allow tmux to stabilize the session
+            start_dashboard_updater
+           
+            info "Attaching to tmux dashboard..."
+            tmux attach -t "$TMUX_SESSION_NAME"
+        else
+            parallel -j "$MAX_PARALLEL_JOBS" process_chunk ::: "${chunk_files[@]}"
+        fi
 
-        # Attach to dashboard
-        info "Attaching to tmux dashboard..."
-        tmux attach -t "$TMUX_SESSION_NAME"
-    else
-        # Use GNU parallel or bash background jobs
-        if command -v parallel &> /dev/null; then
-            export -f process_chunk
-            export OUTPUT_DIR FFUF_THREADS TARGET_PATH WORDLIST PRETTIFY_JSON
-            parallel -j "$MAX_PARALLEL_JOBS" process_chunk ::: "${chunk_files[@]}"
-        else
-            local active_jobs=0
-            local job_pids=()
+    else
+        # Fallback to bash background jobs if parallel is not available
+        if [[ "$USE_TMUX_DASHBOARD" == true ]]; then
+            create_tmux_dashboard
+            sleep 2 # A brief delay to allow tmux to stabilize the session
+            start_dashboard_updater
+            tmux attach -t "$TMUX_SESSION_NAME"
+        else
+            local active_jobs=0
+            local job_pids=()
 
-            for chunk_file in "${chunk_files[@]}"; do
-                while [[ $active_jobs -ge $MAX_PARALLEL_JOBS ]]; do
-                    for i in "${!job_pids[@]}"; do
-                        if ! kill -0 "${job_pids[i]}" 2>/dev/null; then
-                            unset "job_pids[i]"
-                            ((active_jobs--))
-                        fi
-                    done
-                    job_pids=("${job_pids[@]}")
-                    sleep 1
-                done
+            for chunk_file in "${chunk_files[@]}"; do
+                while [[ $active_jobs -ge $MAX_PARALLEL_JOBS ]]; do
+                    for i in "${!job_pids[@]}"; do
+                        if ! kill -0 "${job_pids[i]}" 2>/dev/null; then
+                            unset "job_pids[i]"
+                            ((active_jobs--))
+                        fi
+                    done
+                    job_pids=("${job_pids[@]}")
+                    sleep 1
+                done
 
-                process_chunk "$chunk_file" &
-                job_pids+=($!)
-                ((active_jobs++))
-            done
+                process_chunk "$chunk_file" &
+                job_pids+=($!)
+                ((active_jobs++))
+            done
 
-            for pid in "${job_pids[@]}"; do
-                wait "$pid"
-            done
-        fi
-    fi
-
-    success "All chunks processed"
+            for pid in "${job_pids[@]}"; do
+                wait "$pid"
+            done
+        fi
+    fi
 }
 
 # Enhanced cleanup
