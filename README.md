@@ -48,9 +48,9 @@ brew install parallel     # macOS
 1. **Download the automation suite**:
 ```bash
 # Download all scripts
-curl -O https://example.com/ffuf_automation.sh
-curl -O https://example.com/json_prettify.sh  
-curl -O https://example.com/setup_examples.sh
+curl -O https://github.com/xerocorps/massive_ffuf/raw/refs/heads/main/ffuf_automation.sh
+curl -O https://github.com/xerocorps/massive_ffuf/raw/refs/heads/main/json_prettify.sh  
+curl -O https://github.com/xerocorps/massive_ffuf/raw/refs/heads/main/setup_examples.sh
 ```
 
 2. **Set executable permissions**:
